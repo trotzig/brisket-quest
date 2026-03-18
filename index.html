@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HONK: THE BRISKET QUEST</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
+canvas { display: block; image-rendering: pixelated; }
+
+/* Crosshair */
+#crosshair {
+  position: fixed; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none; z-index: 10;
+  display: none;
+}
+#crosshair::before, #crosshair::after {
+  content: ''; position: absolute; background: rgba(255,255,255,0.8);
+}
+#crosshair::before { width: 2px; height: 16px; top: -8px; left: -1px; }
+#crosshair::after  { width: 16px; height: 2px; left: -8px; top: -1px; }
+
+/* HUD top-left */
+#hud {
+  position: fixed; top: 12px; left: 12px;
+  background: rgba(0,0,0,0.55); color: #ffe066;
+  padding: 8px 14px; border-radius: 6px;
+  border: 2px solid #ffd700; font-size: 13px;
+  display: none; z-index: 10;
+  line-height: 1.7;
+}
+
+/* Minimap */
+#minimap {
+  position: fixed; top: 12px; right: 12px;
+  border: 2px solid #ffd700; border-radius: 4px;
+  display: none; z-index: 10;
+  background: #1a2a0a;
+}
+
+/* Inventory bar */
+#inventory {
+  position: fixed; bottom: 16px; left: 50%;
+  transform: translateX(-50%);
+  display: none; z-index: 10;
+  display: flex; gap: 6px;
+}
+.inv-slot {
+  width: 56px; height: 56px;
+  background: rgba(0,0,0,0.7);
+  border: 2px solid #555; border-radius: 4px;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  color: #aaa; font-size: 9px; text-align: center;
+  position: relative;
+}
+.inv-slot.collected { border-color: #ffd700; color: #ffd700; }
+.inv-slot.used { border-color: #4caf50; }
+.inv-slot .check { color: #4caf50; font-size: 14px; position: absolute; top: 2px; right: 4px; }
+.inv-slot .icon { font-size: 20px; }
+
+/* Interaction prompt */
+#prompt {
+  position: fixed; bottom: 82px; left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.75); color: #ffd700;
+  border: 2px solid #ffd700; border-radius: 6px;
+  padding: 6px 16px; font-size: 14px;
+  display: none; z-index: 10;
+}
+
+/* Notifications */
+#notifs {
+  position: fixed; top: 16px; left: 50%;
+  transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 6px;
+  z-index: 20; pointer-events: none;
+}
+.notif {
+  background: rgba(0,0,0,0.85); color: #ffd700;
+  border: 2px solid #ffd700; border-radius: 6px;
+  padding: 7px 18px; font-size: 14px; text-align: center;
+  animation: slideIn 0.3s ease, fadeOut 0.4s ease 2s forwards;
+}
+@keyframes slideIn { from { opacity:0; transform: translateY(-10px); } to { opacity:1; transform: translateY(0); } }
+@keyframes fadeOut { to { opacity:0; transform: translateY(-6px); } }
+
+/* Recipe panel */
+#recipe-panel {
+  position: fixed; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: #f5deb3; color: #3b1a00;
+  border: 4px solid #8b6914; border-radius: 8px;
+  padding: 20px 30px; min-width: 280px;
+  display: none; z-index: 30;
+  box-shadow: 0 0 40px rgba(0,0,0,0.8);
+}
+#recipe-panel h2 { text-align: center; color: #6b2d00; margin-bottom: 12px; font-size: 20px; }
+#recipe-panel ol { padding-left: 20px; line-height: 2; font-size: 15px; }
+#recipe-panel .close-btn {
+  display: block; margin: 14px auto 0;
+  background: #8b4513; color: #fff;
+  border: none; padding: 7px 20px; border-radius: 4px;
+  cursor: pointer; font-family: 'Courier New', monospace; font-size: 13px;
+}
+
+/* Cook panel */
+#cook-panel {
+  position: fixed; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: #1a1a1a; color: #fff;
+  border: 3px solid #ff8800; border-radius: 8px;
+  padding: 20px 28px; min-width: 300px;
+  display: none; z-index: 30;
+  box-shadow: 0 0 40px rgba(255,136,0,0.4);
+}
+#cook-panel h2 { text-align: center; color: #ff8800; margin-bottom: 10px; font-size: 19px; }
+#cook-panel .hint { color: #aaa; font-size: 12px; text-align: center; margin-bottom: 12px; }
+.cook-step {
+  padding: 8px 12px; margin: 5px 0; border-radius: 4px;
+  border: 1px solid #333; font-size: 14px;
+  display: flex; align-items: center; gap: 10px;
+  transition: background 0.2s;
+}
+.cook-step.current { border-color: #ff8800; background: rgba(255,136,0,0.15); cursor: pointer; }
+.cook-step.current:hover { background: rgba(255,136,0,0.25); }
+.cook-step.done { border-color: #4caf50; color: #4caf50; }
+.cook-step .step-icon { font-size: 18px; }
+#fire-btn {
+  display: block; width: 100%; margin-top: 14px;
+  background: #222; color: #555;
+  border: 2px solid #555; padding: 10px;
+  border-radius: 4px; cursor: not-allowed;
+  font-family: 'Courier New', monospace; font-size: 15px;
+  transition: all 0.3s;
+}
+#fire-btn.ready { background: #ff4400; color: #fff; border-color: #ff8800; cursor: pointer; }
+#fire-btn.ready:hover { background: #ff6600; }
+.cook-close {
+  display: block; margin: 10px auto 0;
+  background: #333; color: #aaa;
+  border: 1px solid #555; padding: 5px 16px; border-radius: 4px;
+  cursor: pointer; font-family: 'Courier New', monospace; font-size: 12px;
+}
+
+/* HONK floating text */
+.honk-text {
+  position: fixed; color: #ffd700;
+  font-size: 28px; font-weight: bold;
+  text-shadow: 2px 2px 0 #000;
+  pointer-events: none; z-index: 50;
+  animation: honkFloat 1s ease-out forwards;
+}
+@keyframes honkFloat {
+  from { opacity:1; transform: translateY(0) scale(1); }
+  to   { opacity:0; transform: translateY(-60px) scale(1.4); }
+}
+
+/* Start screen */
+#start-screen {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.92);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  z-index: 100;
+}
+#start-screen h1 { color: #ffd700; font-size: 64px; letter-spacing: 8px; text-shadow: 0 0 30px #ffd700; margin-bottom: 6px; }
+#start-screen h2 { color: #ff8800; font-size: 18px; margin-bottom: 30px; }
+#start-screen .controls {
+  color: #ccc; font-size: 13px; line-height: 2;
+  background: rgba(255,255,255,0.05); padding: 14px 28px;
+  border: 1px solid #444; border-radius: 6px; margin-bottom: 24px;
+  text-align: left;
+}
+#start-screen .controls span { color: #ffd700; }
+#start-btn {
+  background: #ffd700; color: #000;
+  border: none; padding: 14px 36px; font-size: 20px;
+  font-family: 'Courier New', monospace; font-weight: bold;
+  border-radius: 6px; cursor: pointer;
+  letter-spacing: 2px;
+  transition: background 0.2s, transform 0.1s;
+}
+#start-btn:hover { background: #ffed50; transform: scale(1.05); }
+
+/* Win screen */
+#win-screen {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.9);
+  display: none; flex-direction: column;
+  align-items: center; justify-content: center;
+  z-index: 100;
+}
+#win-screen h1 { color: #ffd700; font-size: 52px; letter-spacing: 4px; text-shadow: 0 0 40px #ffd700; margin-bottom: 12px; }
+#win-screen p { color: #fff; font-size: 20px; margin: 6px 0; }
+#win-screen .goose { font-size: 80px; margin: 16px 0; animation: wiggle 0.5s infinite alternate; }
+@keyframes wiggle { from { transform: rotate(-8deg); } to { transform: rotate(8deg); } }
+#win-screen button {
+  margin-top: 24px; background: #ffd700; color: #000;
+  border: none; padding: 12px 30px; font-size: 16px;
+  font-family: 'Courier New', monospace; cursor: pointer; border-radius: 4px;
+}
+</style>
+</head>
+<body>
+
+<!-- UI Elements -->
+<div id="crosshair"></div>
+<div id="hud">
+  <div>Ingredients: <span id="hud-ing">0/5</span></div>
+  <div>Recipe: <span id="hud-recipe">Not Found</span></div>
+  <div>Goal: <span id="hud-goal">Explore the world!</span></div>
+</div>
+<canvas id="minimap" width="120" height="120"></canvas>
+<div id="notifs"></div>
+<div id="prompt"></div>
+
+<!-- Inventory -->
+<div id="inventory">
+  <div class="inv-slot" id="slot-brisket"><div class="icon">🥩</div><div>Brisket</div></div>
+  <div class="inv-slot" id="slot-salt"><div class="icon">🧂</div><div>Salt</div></div>
+  <div class="inv-slot" id="slot-pepper"><div class="icon">🌶️</div><div>Pepper</div></div>
+  <div class="inv-slot" id="slot-garlic"><div class="icon">🧄</div><div>Garlic</div></div>
+  <div class="inv-slot" id="slot-sauce"><div class="icon">🍯</div><div>Sauce</div></div>
+  <div class="inv-slot" id="slot-recipe"><div class="icon">📜</div><div>Recipe</div></div>
+</div>
+
+<!-- Recipe Panel -->
+<div id="recipe-panel">
+  <h2>📜 Brisket Recipe</h2>
+  <p style="text-align:center;margin-bottom:10px;font-style:italic;font-size:13px;">Ancient goose wisdom:</p>
+  <ol>
+    <li>Start with the <strong>Brisket</strong></li>
+    <li>Season with <strong>Salt</strong></li>
+    <li>Add cracked <strong>Pepper</strong></li>
+    <li>Rub in <strong>Garlic</strong></li>
+    <li>Slather on <strong>BBQ Sauce</strong></li>
+    <li>🔥 Cook until perfect!</li>
+  </ol>
+  <button class="close-btn" onclick="closePanel('recipe-panel')">Close [ESC]</button>
+</div>
+
+<!-- Cook Panel -->
+<div id="cook-panel">
+  <h2>🔥 Cooking Station</h2>
+  <div class="hint" id="cook-hint">Add ingredients in the correct order!</div>
+  <div id="cook-steps"></div>
+  <button id="fire-btn" disabled>🔥 LIGHT THE FIRE!</button>
+  <button class="cook-close" onclick="closePanel('cook-panel')">Close [ESC]</button>
+</div>
+
+<!-- Start Screen -->
+<div id="start-screen">
+  <h1>HONK!</h1>
+  <h2>THE BRISKET QUEST</h2>
+  <div class="controls">
+    <span>WASD / Arrows</span> — Move<br>
+    <span>Mouse</span> — Look around<br>
+    <span>E</span> — Interact / Pick up<br>
+    <span>R</span> — Toggle recipe (if found)<br>
+    <span>Space</span> — HONK!<br>
+    <span>ESC</span> — Close panels<br><br>
+    <em style="color:#aaa">Find all 5 ingredients, learn the recipe,<br>and cook the perfect brisket! 🪿</em>
+  </div>
+  <button id="start-btn">🪿 HONK TO START</button>
+</div>
+
+<!-- Win Screen -->
+<div id="win-screen">
+  <div class="goose">🪿</div>
+  <h1>BRISKET ACHIEVED!</h1>
+  <p>Your goose has cooked the perfect brisket!</p>
+  <p style="color:#ff8800;font-size:16px;margin-top:8px;">The honking was worth it all along.</p>
+  <button onclick="location.reload()">Play Again</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════
+//  HONK: THE BRISKET QUEST — Main Game Script
+// ═══════════════════════════════════════════════
+
+// ── GAME STATE ──────────────────────────────────
+let gameStarted = false;
+let recipeFound = false;
+let gameWon = false;
+
+const inventory = { brisket: false, salt: false, pepper: false, garlic: false, sauce: false };
+const cookingProgress = { brisket: false, salt: false, pepper: false, garlic: false, sauce: false };
+const cookOrder = ['brisket', 'salt', 'pepper', 'garlic', 'sauce'];
+let cookStep = 0;
+
+const keys = {};
+let mouseX = 0, mouseY = 0;
+let camYaw = 0, camPitch = 0.25;
+let pointerLocked = false;
+
+const colliders = [];
+const interactables = [];
+const itemMeshes = [];
+let fireLight, fireCones = [];
+
+// ── RENDERER + SCENE ────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: false });
+renderer.setPixelRatio(1);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.BasicShadowMap;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87CEEB);
+scene.fog = new THREE.Fog(0x87CEEB, 50, 130);
+
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 200);
+camera.position.set(0, 4, 6);
+
+window.addEventListener('resize', () => {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+});
+
+// ── HELPERS ─────────────────────────────────────
+function makeBox(w, h, d, color, x, y, z, castShadow = true) {
+  const geo = new THREE.BoxGeometry(w, h, d);
+  const mat = new THREE.MeshLambertMaterial({ color });
+  mat.map && (mat.map.magFilter = THREE.NearestFilter);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, y, z);
+  mesh.castShadow = castShadow;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+  return mesh;
+}
+
+function addCollider(x, z, w, d) {
+  colliders.push({ x, z, w, d });
+}
+
+function notify(msg) {
+  const el = document.createElement('div');
+  el.className = 'notif';
+  el.textContent = msg;
+  document.getElementById('notifs').appendChild(el);
+  setTimeout(() => el.remove(), 2600);
+}
+
+function closePanel(id) {
+  document.getElementById(id).style.display = 'none';
+}
+
+// ── LIGHTING ────────────────────────────────────
+const ambient = new THREE.AmbientLight(0xfff8e0, 0.6);
+scene.add(ambient);
+
+const sun = new THREE.DirectionalLight(0xfff0c0, 1.2);
+sun.position.set(30, 60, 20);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+sun.shadow.camera.near = 0.5;
+sun.shadow.camera.far = 200;
+sun.shadow.camera.left = -80;
+sun.shadow.camera.right = 80;
+sun.shadow.camera.top = 80;
+sun.shadow.camera.bottom = -80;
+scene.add(sun);
+
+fireLight = new THREE.PointLight(0xff8800, 2, 8);
+fireLight.position.set(-8, 1.5, -8);
+scene.add(fireLight);
+
+// ── WORLD BUILDING ──────────────────────────────
+
+// Ground
+const groundGeo = new THREE.PlaneGeometry(320, 320, 20, 20);
+const groundMat = new THREE.MeshLambertMaterial({ color: 0x5a8a3c });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// Ground patches (darker)
+for (let i = 0; i < 40; i++) {
+  const px = (Math.random() - 0.5) * 290;
+  const pz = (Math.random() - 0.5) * 290;
+  const ps = 2 + Math.random() * 8;
+  const patchGeo = new THREE.PlaneGeometry(ps, ps);
+  const patchMat = new THREE.MeshLambertMaterial({ color: 0x4a7a2c });
+  const patch = new THREE.Mesh(patchGeo, patchMat);
+  patch.rotation.x = -Math.PI / 2;
+  patch.position.set(px, 0.01, pz);
+  patch.receiveShadow = true;
+  scene.add(patch);
+}
+
+// ── BARN (north, z=-45) ── x:-6..+6, z:-50..-40, door at z=-40 center
+// Barn walls built around door opening (x:±1.5, h:4.2)
+makeBox(4.5, 6, 0.6, 0xcc3322, -3.75, 3, -40.3); // front-left
+makeBox(4.5, 6, 0.6, 0xcc3322,  3.75, 3, -40.3); // front-right
+makeBox(3,   1.8, 0.6, 0xcc3322, 0, 5.1, -40.3); // front-top (above door)
+makeBox(12,  6, 0.6, 0xcc3322, 0, 3, -49.7);      // back
+makeBox(0.6, 6, 10,  0xcc3322, -5.7, 3, -45);     // left side
+makeBox(0.6, 6, 10,  0xcc3322,  5.7, 3, -45);     // right side
+makeBox(12.4, 0.5, 10.4, 0x992211, 0, 6.2, -45); // roof base
+makeBox(11, 3, 1, 0x992211, 0, 7.5, -45);         // roof ridge
+for (let sx of [-5.5, 5.5]) {
+  const tri = new THREE.Mesh(new THREE.BoxGeometry(1, 3, 10), new THREE.MeshLambertMaterial({ color: 0xbb2211 }));
+  tri.position.set(sx, 7.5, -45); scene.add(tri);
+}
+// Door frame (open) — two posts + lintel
+makeBox(0.4, 4, 0.4, 0x331100, -1.5, 2, -40.1);
+makeBox(0.4, 4, 0.4, 0x331100,  1.5, 2, -40.1);
+makeBox(3.4, 0.4, 0.4, 0x331100, 0, 4.2, -40.1);
+// Interior floor
+makeBox(11, 0.1, 9, 0x8b6914, 0, 0.05, -45);
+// Hay bales inside
+makeBox(1.5, 1, 1.5, 0xd4aa44, -4, 0.5, -48);
+makeBox(1.5, 1, 1.5, 0xd4aa44, -4, 1.5, -48);
+makeBox(1.5, 1, 1.5, 0xd4aa44,  4, 0.5, -48);
+// Wall colliders with door gap
+addCollider(-3.75, -40.5, 4.5, 1); // front-left
+addCollider( 3.75, -40.5, 4.5, 1); // front-right
+addCollider(0, -50.5, 12, 1);       // back
+addCollider(-6.5, -45, 1, 10);      // left side
+addCollider( 6.5, -45, 1, 10);      // right side
+
+// ── KITCHEN SHED (west, x=-40) ── x:-44.5..-35.5, z:-9..-1, door at z=-1 center
+// Shed walls built around door opening (x:-41.5..-38.5, h:3.2)
+makeBox(3,   5, 0.6, 0xc8a070, -43,   2.5, -0.7); // front-left
+makeBox(3,   5, 0.6, 0xc8a070, -37,   2.5, -0.7); // front-right
+makeBox(3,   1.8, 0.6, 0xc8a070, -40, 4.1, -0.7); // front-top
+makeBox(9,   5, 0.6, 0xc8a070, -40,   2.5, -8.7); // back
+makeBox(0.6, 5, 8,   0xc8a070, -44.2, 2.5, -5);   // west side
+makeBox(0.6, 5, 8,   0xc8a070, -35.8, 2.5, -5);   // east side
+makeBox(9.5, 1, 8.5, 0xa07840, -40, 5.2, -5);     // roof
+// Door frame (open)
+makeBox(0.4, 3.2, 0.4, 0x664422, -41.5, 1.6, -0.9);
+makeBox(0.4, 3.2, 0.4, 0x664422, -38.5, 1.6, -0.9);
+makeBox(3.4, 0.4, 0.4, 0x664422, -40, 3.4, -0.9);
+// Interior floor
+makeBox(8.5, 0.1, 7.5, 0xb8975a, -40, 0.05, -5);
+// Kitchen counter inside
+makeBox(6, 1, 1.2, 0x8b6040, -40, 0.5, -8);
+makeBox(6, 0.15, 1.4, 0xd4a870, -40, 1.1, -8);
+// Wall colliders with door gap
+addCollider(-42.875, -0.5, 3.25, 1); // front-left
+addCollider(-37.125, -0.5, 3.25, 1); // front-right
+addCollider(-40, -9.5, 9, 1);         // back
+addCollider(-44.5, -5, 1, 8);         // west side
+addCollider(-35.5, -5, 1, 8);         // east side
+
+// ── OLD SHACK (south, z=38) ── x:1..9, z:34.5..41.5, door at z=34.5 center
+// Shack walls built around door opening (x:3.5..6.5, h:3)
+makeBox(2.5, 4, 0.6, 0x8b7355, 2.25, 2, 34.8); // front-left
+makeBox(2.5, 4, 0.6, 0x8b7355, 7.75, 2, 34.8); // front-right
+makeBox(3,   1, 0.6, 0x8b7355, 5,    3.5, 34.8); // front-top
+makeBox(8,   4, 0.6, 0x8b7355, 5,    2, 41.2);   // back
+makeBox(0.6, 4, 7,   0x8b7355, 1.3,  2, 38);     // west side
+makeBox(0.6, 4, 7,   0x8b7355, 8.7,  2, 38);     // east side
+makeBox(8.5, 1.5, 7.5, 0x6b5335, 5, 4.7, 38);
+// Door frame (open)
+makeBox(0.4, 3, 0.4, 0x4a3620, 3.5, 1.5, 34.4);
+makeBox(0.4, 3, 0.4, 0x4a3620, 6.5, 1.5, 34.4);
+makeBox(3.4, 0.4, 0.4, 0x4a3620, 5, 3.2, 34.4);
+// Interior floor
+makeBox(7.5, 0.1, 6.5, 0x7a6045, 5, 0.05, 38);
+// Old table inside
+makeBox(3, 0.15, 1.5, 0x8b6040, 5, 1.2, 38);
+makeBox(0.15, 1.2, 0.15, 0x7a5030, 3.6, 0.6, 37.4);
+makeBox(0.15, 1.2, 0.15, 0x7a5030, 6.4, 0.6, 37.4);
+makeBox(0.15, 1.2, 0.15, 0x7a5030, 3.6, 0.6, 38.6);
+makeBox(0.15, 1.2, 0.15, 0x7a5030, 6.4, 0.6, 38.6);
+// Wall colliders with door gap
+addCollider(2.25, 34, 2.5, 1); // front-left
+addCollider(7.75, 34, 2.5, 1); // front-right
+addCollider(5, 41.5, 8, 1);    // back
+addCollider(0.5, 38, 1, 7);    // west side
+addCollider(9.5, 38, 1, 7);    // east side
+
+// ── GARDEN (east, x=40) ──
+// Raised beds
+makeBox(8, 0.8, 4, 0x8b6914, 37, 0.4, -3);        // bed 1 frame
+makeBox(7.5, 0.3, 3.5, 0x5c4010, 37, 0.95, -3);   // dirt
+makeBox(8, 0.8, 4, 0x8b6914, 44, 0.4, 4);          // bed 2 frame
+makeBox(7.5, 0.3, 3.5, 0x5c4010, 44, 0.95, 4);     // dirt
+// Garden fence posts
+for (let fi = 0; fi < 5; fi++) {
+  makeBox(0.3, 1.5, 0.3, 0x8b7355, 33 + fi * 2.5, 0.75, -6.5);
+  makeBox(0.3, 1.5, 0.3, 0x8b7355, 33 + fi * 2.5, 0.75, 8);
+  makeBox(2.5, 0.2, 0.2, 0x8b7355, 34.25 + fi * 2.5, 1.1, -6.5);
+  makeBox(2.5, 0.2, 0.2, 0x8b7355, 34.25 + fi * 2.5, 1.1, 8);
+}
+// No full garden collider — player can walk in freely
+
+// ── STONE WELL (center-right) ──
+makeBox(0.6, 3, 0.6, 0x888888, 6, 1.5, -8);   // pillar NW
+makeBox(0.6, 3, 0.6, 0x888888, 10, 1.5, -8);  // pillar NE
+makeBox(0.6, 3, 0.6, 0x888888, 6, 1.5, -12);  // pillar SW
+makeBox(0.6, 3, 0.6, 0x888888, 10, 1.5, -12); // pillar SE
+makeBox(5, 0.5, 5, 0x999999, 8, 3, -10);       // roof
+makeBox(3.5, 2.5, 3.5, 0x777777, 8, 1.25, -10); // well body
+addCollider(8, -10, 6, 6);
+// BBQ Sauce chest nearby
+makeBox(1.2, 0.8, 0.8, 0x664400, 12, 0.4, -9);
+makeBox(1.2, 0.15, 0.8, 0x885500, 12, 0.87, -9);
+
+// ── COOKING STATION (center-left) ──
+makeBox(4, 0.5, 4, 0x888877, -8, 0.25, -8);    // stone platform
+makeBox(3, 0.4, 3, 0x666655, -8, 0.7, -8);     // grill base
+makeBox(3, 0.15, 3, 0x333322, -8, 0.95, -8);   // grill grate
+// Fire cones
+const fireMat1 = new THREE.MeshLambertMaterial({ color: 0xff4400, emissive: 0xff2200, emissiveIntensity: 0.6 });
+const fireMat2 = new THREE.MeshLambertMaterial({ color: 0xff8800, emissive: 0xff6600, emissiveIntensity: 0.6 });
+for (let fi = 0; fi < 4; fi++) {
+  const geo = new THREE.ConeGeometry(0.25, 0.7, 5);
+  const mat = fi % 2 === 0 ? fireMat1 : fireMat2;
+  const cone = new THREE.Mesh(geo, mat);
+  cone.position.set(-8 + (fi % 2) * 1.0 - 0.5, 1.4, -8 + Math.floor(fi / 2) * 1.0 - 0.5);
+  scene.add(cone);
+  fireCones.push(cone);
+}
+addCollider(-8, -8, 5, 5);
+
+// ── TREES ──────────────────────────────────────
+const treePositions = [
+  [-20, -20], [20, -25], [-25, 10], [30, 15], [-15, 30], [15, 35],
+  [-35, -15], [35, -20], [-10, -35], [12, -40], [-42, 25], [42, -35],
+  [-30, 42], [28, 42], [-50, 5], [50, 10], [0, -55], [-55, -35],
+  [55, -30], [0, 55]
+];
+treePositions.forEach(([tx, tz]) => {
+  makeBox(0.6, 2.5, 0.6, 0x6b4226, tx, 1.25, tz);
+  makeBox(3.5, 2, 3.5, 0x228b22, tx, 3.5, tz);
+  makeBox(2.8, 1.8, 2.8, 0x1a7a1a, tx, 5.0, tz);
+  makeBox(1.8, 1.5, 1.8, 0x136b13, tx, 6.4, tz);
+  addCollider(tx, tz, 2, 2);
+});
+
+// ── FENCE LINES along paths ──
+for (let f = 0; f < 8; f++) {
+  makeBox(0.2, 1.2, 0.2, 0x8b7355, -4 + f * 3, 0.6, 2);
+  if (f < 7) makeBox(3, 0.15, 0.15, 0x8b7355, -2.5 + f * 3, 0.9, 2);
+}
+for (let f = 0; f < 6; f++) {
+  makeBox(0.2, 1.2, 0.2, 0x8b7355, -38, 0.6, -25 + f * 3.5);
+  if (f < 5) makeBox(0.15, 0.15, 3.5, 0x8b7355, -38, 0.9, -23.25 + f * 3.5);
+}
+
+// ── MOUNTAINS ───────────────────────────────────
+const mountainAngles = Array.from({length: 12}, (_, i) => i * (Math.PI * 2 / 12));
+mountainAngles.forEach(angle => {
+  const mx = Math.cos(angle) * 130;
+  const mz = Math.sin(angle) * 130;
+  const mh = 12 + Math.random() * 10;
+  const mr = 8 + Math.random() * 5;
+  const geo = new THREE.ConeGeometry(mr, mh, 6);
+  const mat = new THREE.MeshLambertMaterial({ color: 0x7a8a6a });
+  const m = new THREE.Mesh(geo, mat);
+  m.position.set(mx, mh / 2, mz);
+  scene.add(m);
+  // Snow cap
+  const capGeo = new THREE.ConeGeometry(mr * 0.4, mh * 0.25, 6);
+  const capMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const cap = new THREE.Mesh(capGeo, capMat);
+  cap.position.set(mx, mh * 0.9, mz);
+  scene.add(cap);
+});
+
+// Outer forest ring (radius 65–110)
+for (let i = 0; i < 50; i++) {
+  const angle = (i / 50) * Math.PI * 2 + Math.random() * 0.4;
+  const dist = 65 + Math.random() * 45;
+  const tx = Math.cos(angle) * dist, tz = Math.sin(angle) * dist;
+  const h = 2 + Math.random() * 2;
+  makeBox(0.5 + Math.random()*0.3, h, 0.5 + Math.random()*0.3, 0x6b4226, tx, h/2, tz);
+  makeBox(3 + Math.random()*2, 1.8, 3 + Math.random()*2, 0x228b22, tx, h+1, tz);
+  makeBox(2.2, 1.5, 2.2, 0x1a7a1a, tx, h+2.4, tz);
+  makeBox(1.4, 1.2, 1.4, 0x136b13, tx, h+3.6, tz);
+  addCollider(tx, tz, 2, 2);
+}
+
+// ── CLOUDS ──────────────────────────────────────
+const clouds = [];
+for (let i = 0; i < 15; i++) {
+  const group = new THREE.Group();
+  const cx = (Math.random() - 0.5) * 180;
+  const cz = (Math.random() - 0.5) * 180;
+  const cy = 25 + Math.random() * 20;
+  const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  for (let b = 0; b < 5; b++) {
+    const bw = 4 + Math.random() * 4;
+    const bh = 2 + Math.random() * 2;
+    const bd = 3 + Math.random() * 3;
+    const geo = new THREE.BoxGeometry(bw, bh, bd);
+    const mesh = new THREE.Mesh(geo, cloudMat);
+    mesh.position.set((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 1.5, (Math.random() - 0.5) * 3);
+    group.add(mesh);
+  }
+  group.position.set(cx, cy, cz);
+  group.userData.speed = 0.5 + Math.random() * 1.5;
+  scene.add(group);
+  clouds.push(group);
+}
+
+// ── NATURE: FLOWERS, GRASS, ROCKS, MUSHROOMS ────
+
+function isClearZone(x, z) {
+  // Keep clear of buildings, station, well, player start
+  const zones = [
+    [0,-45,10,8], [-40,-5,8,7], [5,38,8,7],
+    [-8,-8,7,7], [8,-10,8,8], [0,0,8,8],
+  ];
+  return zones.every(([cx,cz,hw,hd]) => Math.abs(x-cx)>=hw || Math.abs(z-cz)>=hd);
+}
+
+const flowerColors = [0xff4488,0xff7700,0xffee00,0xbb44ff,0xff2255,0x44ccff,0xffffff,0xff99bb,0xaaff44];
+
+function spawnFlower(x, z) {
+  const color = flowerColors[Math.floor(Math.random() * flowerColors.length)];
+  makeBox(0.06, 0.3, 0.06, 0x228b22, x, 0.15, z); // stem
+  makeBox(0.32, 0.08, 0.32, color, x, 0.37, z);   // petals flat top
+  // Side petals for fullness
+  makeBox(0.08, 0.22, 0.08, color, x, 0.37, z);
+}
+
+function spawnGrassTuft(x, z) {
+  const col = [0x3a8a2a, 0x4a9a30, 0x5aaa3a, 0x2a7a20][Math.floor(Math.random()*4)];
+  const mat = new THREE.MeshLambertMaterial({ color: col, side: THREE.DoubleSide });
+  const w = 0.35 + Math.random() * 0.25, h = 0.3 + Math.random() * 0.25;
+  for (let r = 0; r < 3; r++) {
+    const blade = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.4, h), mat);
+    blade.position.set(x + (Math.random()-0.5)*0.2, h/2, z + (Math.random()-0.5)*0.2);
+    blade.rotation.y = (r / 3) * Math.PI + Math.random() * 0.4;
+    scene.add(blade);
+  }
+}
+
+function spawnRock(x, z) {
+  const s = 0.25 + Math.random() * 0.8;
+  const col = 0x778877 + (Math.random()*0x111111|0);
+  const r = new THREE.Mesh(new THREE.BoxGeometry(s, s*0.65, s*0.85),
+    new THREE.MeshLambertMaterial({ color: col }));
+  r.position.set(x, s*0.32, z);
+  r.rotation.y = Math.random() * Math.PI;
+  r.castShadow = true;
+  scene.add(r);
+}
+
+function spawnMushroom(x, z) {
+  makeBox(0.1, 0.25, 0.1, 0xeeeedd, x, 0.125, z);          // stem
+  makeBox(0.36, 0.16, 0.36, 0xdd2200, x, 0.35, z);         // cap
+  makeBox(0.07, 0.04, 0.07, 0xffffff, x+0.09, 0.36, z);    // dot
+  makeBox(0.05, 0.04, 0.05, 0xffffff, x-0.07, 0.36, z+0.06); // dot
+}
+
+// Scatter everything across the expanded map
+const spread = () => (Math.random() - 0.5) * 260;
+for (let i = 0; i < 400; i++) { const x=spread(),z=spread(); if(isClearZone(x,z)) spawnGrassTuft(x,z); }
+for (let i = 0; i < 200; i++) { const x=spread(),z=spread(); if(isClearZone(x,z)) spawnFlower(x,z); }
+for (let i = 0; i <  60; i++) { const x=spread(),z=spread(); if(isClearZone(x,z)) spawnRock(x,z); }
+for (let i = 0; i <  20; i++) { const x=spread(),z=spread(); if(isClearZone(x,z)) spawnMushroom(x,z); }
+
+// ── GOOSE MODEL ─────────────────────────────────
+const goose = new THREE.Group();
+scene.add(goose);
+goose.position.set(0, 0, 0);
+
+const wMat = new THREE.MeshLambertMaterial({ color: 0xeeeeee });
+const oMat = new THREE.MeshLambertMaterial({ color: 0xff8800 });
+const bMat = new THREE.MeshLambertMaterial({ color: 0x111111 });
+
+function gooseBox(w, h, d, mat, x, y, z) {
+  const geo = new THREE.BoxGeometry(w, h, d);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(x, y, z);
+  goose.add(mesh);
+  return mesh;
+}
+
+const gBody  = gooseBox(0.7, 0.6, 1.0, wMat, 0, 0.6, 0);
+const gNeck  = gooseBox(0.25, 0.6, 0.25, wMat, 0, 1.0, -0.3);
+gNeck.rotation.x = -0.3;
+const gHead  = gooseBox(0.4, 0.35, 0.4, wMat, 0, 1.45, -0.5);
+const gBeak  = gooseBox(0.3, 0.12, 0.3, oMat, 0, 1.4, -0.75);
+gooseBox(0.08, 0.08, 0.05, bMat, 0.14, 1.5, -0.68);  // eye R
+gooseBox(0.08, 0.08, 0.05, bMat, -0.14, 1.5, -0.68); // eye L
+gooseBox(0.5, 0.1, 0.7, wMat, 0.5, 0.65, 0);          // wing R
+gooseBox(0.5, 0.1, 0.7, wMat, -0.5, 0.65, 0);         // wing L
+
+const gLegR = gooseBox(0.12, 0.4, 0.12, oMat, 0.18, 0.2, 0.2);
+const gLegL = gooseBox(0.12, 0.4, 0.12, oMat, -0.18, 0.2, 0.2);
+const gFootR = gooseBox(0.3, 0.08, 0.25, oMat, 0.18, 0.0, 0.32);
+const gFootL = gooseBox(0.3, 0.08, 0.25, oMat, -0.18, 0.0, 0.32);
+
+// ── ITEMS / COLLECTIBLES ─────────────────────────
+function makeItem(name, color, shapeType, px, py, pz, action) {
+  const group = new THREE.Group();
+  group.position.set(px, py, pz);
+
+  // Gold platform
+  const platGeo = new THREE.BoxGeometry(0.8, 0.1, 0.8);
+  const platMat = new THREE.MeshLambertMaterial({ color: 0xffd700, emissive: 0xaa8800, emissiveIntensity: 0.3 });
+  const plat = new THREE.Mesh(platGeo, platMat);
+  plat.position.y = -0.3;
+  group.add(plat);
+
+  // Item mesh
+  let geo;
+  if (shapeType === 'flat')   geo = new THREE.BoxGeometry(0.6, 0.15, 0.9);
+  else if (shapeType === 'cyl') geo = new THREE.CylinderGeometry(0.25, 0.25, 0.5, 8);
+  else if (shapeType === 'sphere') geo = new THREE.SphereGeometry(0.28, 6, 6);
+  else geo = new THREE.BoxGeometry(0.4, 0.4, 0.4);
+
+  const mat = new THREE.MeshLambertMaterial({ color });
+  const mesh = new THREE.Mesh(geo, mat);
+  group.add(mesh);
+
+  scene.add(group);
+  itemMeshes.push({ group, baseY: py });
+
+  interactables.push({
+    name, px, pz,
+    label: `[E] Pick up ${name.charAt(0).toUpperCase() + name.slice(1)}`,
+    range: 4,
+    action: () => {
+      if (action) action();
+      else {
+        inventory[name] = true;
+        notify(`Picked up: ${name.charAt(0).toUpperCase() + name.slice(1)}! 🐥`);
+        updateInventoryUI();
+        updateHUD();
+      }
+      group.visible = false;
+      const idx = interactables.findIndex(i => i.name === name);
+      if (idx !== -1) interactables.splice(idx, 1);
+      const mi = itemMeshes.findIndex(m => m.group === group);
+      if (mi !== -1) itemMeshes.splice(mi, 1);
+    }
+  });
+
+  return group;
+}
+
+// Place all items
+makeItem('brisket', 0x8b4513, 'flat', 0, 1, -45);
+makeItem('salt',    0xffffff, 'cyl', -40, 1, -5);
+makeItem('pepper',  0x2d2d2d, 'sphere', 38, 1, -5);
+makeItem('garlic',  0xfffacd, 'sphere', 42, 1, 5);
+makeItem('sauce',   0xcc3300, 'cyl', 10, 1, -10);
+
+// Recipe scroll (special)
+const scrollGroup = new THREE.Group();
+scrollGroup.position.set(5, 1.35, 38);
+const scrollMat = new THREE.MeshLambertMaterial({ color: 0xf5deb3, emissive: 0xffd700, emissiveIntensity: 0.3 });
+const scrollGeo = new THREE.BoxGeometry(0.5, 0.6, 0.15);
+const scrollMesh = new THREE.Mesh(scrollGeo, scrollMat);
+scrollGroup.add(scrollMesh);
+const platGeo2 = new THREE.BoxGeometry(0.8, 0.1, 0.8);
+const platMat2 = new THREE.MeshLambertMaterial({ color: 0xffd700, emissive: 0xaa8800, emissiveIntensity: 0.5 });
+const plat2 = new THREE.Mesh(platGeo2, platMat2);
+plat2.position.y = -0.3;
+scrollGroup.add(plat2);
+scene.add(scrollGroup);
+itemMeshes.push({ group: scrollGroup, baseY: 1 });
+
+interactables.push({
+  name: 'recipe',
+  px: 5, pz: 38,
+  label: '[E] Read Recipe Scroll',
+  range: 4,
+  action: () => {
+    recipeFound = true;
+    inventory.recipe = true;
+    notify('Recipe scroll found! You know the order! 📜');
+    document.getElementById('recipe-panel').style.display = 'block';
+    updateInventoryUI();
+    updateHUD();
+    scrollGroup.visible = false;
+    const idx = interactables.findIndex(i => i.name === 'recipe');
+    if (idx !== -1) interactables.splice(idx, 1);
+  }
+});
+
+// Cooking station interactable
+interactables.push({
+  name: 'cookstation',
+  px: -8, pz: -8,
+  label: '[E] Use Cooking Station',
+  range: 5,
+  action: () => openCookPanel()
+});
+
+// ── PLAYER STATE ─────────────────────────────────
+const player = {
+  x: 0, y: 0, z: 0,
+  speed: 6,
+  yaw: 0
+};
+
+const camTarget = new THREE.Vector3();
+const camPos = new THREE.Vector3(0, 4, 6);
+let camYawSmooth = 0;
+
+// ── INPUT ────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  keys[e.code] = true;
+
+  if (!gameStarted) return;
+
+  if (e.code === 'KeyE') {
+    const closest = getClosestInteractable();
+    if (closest) closest.action();
+  }
+  if (e.code === 'KeyR') {
+    if (recipeFound) {
+      const rp = document.getElementById('recipe-panel');
+      rp.style.display = rp.style.display === 'block' ? 'none' : 'block';
+    } else {
+      notify('Find the recipe scroll first!');
+    }
+  }
+  if (e.code === 'Space') {
+    e.preventDefault();
+    playHonk();
+    showHonkText();
+  }
+  if (e.code === 'Escape') {
+    closePanel('recipe-panel');
+    closePanel('cook-panel');
+  }
+});
+document.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// Pointer lock
+renderer.domElement.addEventListener('click', () => {
+  if (gameStarted && !document.pointerLockElement) {
+    renderer.domElement.requestPointerLock();
+  }
+});
+document.addEventListener('pointerlockchange', () => {
+  pointerLocked = !!document.pointerLockElement;
+});
+document.addEventListener('mousemove', e => {
+  if (!pointerLocked || !gameStarted) return;
+  camYaw -= e.movementX * 0.002;
+  camPitch = Math.max(-0.1, Math.min(0.6, camPitch + e.movementY * 0.002));
+});
+
+// Start button
+document.getElementById('start-btn').addEventListener('click', () => {
+  document.getElementById('start-screen').style.display = 'none';
+  document.getElementById('crosshair').style.display = 'block';
+  document.getElementById('hud').style.display = 'block';
+  document.getElementById('minimap').style.display = 'block';
+  document.getElementById('inventory').style.display = 'flex';
+  gameStarted = true;
+  renderer.domElement.requestPointerLock();
+  updateInventoryUI();
+  updateHUD();
+  startAmbience();
+});
+
+// ── AUDIO ─────────────────────────────────────────
+const honkAudio = new Audio('honk.mp3');
+honkAudio.preload = 'auto';
+
+function startAmbience() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+    // ── WIND: looping white noise through a drifting bandpass ──
+    const bufLen = ctx.sampleRate * 3;
+    const noiseBuf = ctx.createBuffer(1, bufLen, ctx.sampleRate);
+    const nd = noiseBuf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) nd[i] = Math.random() * 2 - 1;
+
+    const windSrc = ctx.createBufferSource();
+    windSrc.buffer = noiseBuf;
+    windSrc.loop = true;
+
+    const windFilter = ctx.createBiquadFilter();
+    windFilter.type = 'bandpass';
+    windFilter.frequency.value = 350;
+    windFilter.Q.value = 0.6;
+
+    const windGain = ctx.createGain();
+    windGain.gain.value = 0.0; // fade in
+    windGain.gain.linearRampToValueAtTime(0.035, ctx.currentTime + 3);
+
+    windSrc.connect(windFilter);
+    windFilter.connect(windGain);
+    windGain.connect(ctx.destination);
+    windSrc.start();
+
+    // Slowly drift the wind character
+    (function driftWind() {
+      windFilter.frequency.setTargetAtTime(180 + Math.random() * 500, ctx.currentTime, 4 + Math.random() * 5);
+      windGain.gain.setTargetAtTime(0.02 + Math.random() * 0.03, ctx.currentTime, 3 + Math.random() * 4);
+      setTimeout(driftWind, 4000 + Math.random() * 6000);
+    })();
+
+    // ── BIRDS: occasional sine-wave chirps ──
+    function chirp() {
+      const delay = 3000 + Math.random() * 7000;
+      setTimeout(() => {
+        const count = Math.random() < 0.4 ? 2 : 1; // sometimes double chirp
+        for (let c = 0; c < count; c++) {
+          const t = ctx.currentTime + c * 0.22;
+          const freq = 1600 + Math.random() * 1400;
+          const osc = ctx.createOscillator();
+          const g = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, t);
+          osc.frequency.exponentialRampToValueAtTime(freq * (1.1 + Math.random() * 0.3), t + 0.04);
+          osc.frequency.exponentialRampToValueAtTime(freq * 0.85, t + 0.13);
+          g.gain.setValueAtTime(0, t);
+          g.gain.linearRampToValueAtTime(0.055, t + 0.02);
+          g.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
+          osc.connect(g); g.connect(ctx.destination);
+          osc.start(t); osc.stop(t + 0.2);
+        }
+        chirp();
+      }, delay);
+    }
+    chirp();
+
+  } catch(e) {}
+}
+
+function playHonk() {
+  try {
+    honkAudio.currentTime = 0;
+    honkAudio.play();
+  } catch(e) {}
+}
+
+function showHonkText() {
+  const el = document.createElement('div');
+  el.className = 'honk-text';
+  el.textContent = 'HONK!';
+  el.style.left = (window.innerWidth / 2 - 40) + 'px';
+  el.style.top = (window.innerHeight / 2 - 80) + 'px';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 1000);
+}
+
+// ── UI UPDATES ────────────────────────────────────
+function updateInventoryUI() {
+  const names = ['brisket', 'salt', 'pepper', 'garlic', 'sauce', 'recipe'];
+  names.forEach(n => {
+    const slot = document.getElementById('slot-' + n);
+    if (!slot) return;
+    const collected = n === 'recipe' ? recipeFound : inventory[n];
+    const used = cookingProgress[n];
+    slot.classList.toggle('collected', !!collected);
+    slot.classList.toggle('used', !!used);
+    let check = slot.querySelector('.check');
+    if (used && !check) {
+      check = document.createElement('span');
+      check.className = 'check';
+      check.textContent = '✓';
+      slot.appendChild(check);
+    } else if (!used && check) {
+      check.remove();
+    }
+  });
+}
+
+function updateHUD() {
+  const count = Object.values(inventory).filter(v => v).length - (inventory.recipe ? 0 : 0);
+  const ingCount = ['brisket','salt','pepper','garlic','sauce'].filter(k => inventory[k]).length;
+  document.getElementById('hud-ing').textContent = `${ingCount}/5`;
+  document.getElementById('hud-recipe').textContent = recipeFound ? 'Found ✓' : 'Not Found';
+  const cooked = Object.values(cookingProgress).filter(v => v).length;
+  if (cooked === 5) document.getElementById('hud-goal').textContent = '🔥 Light the fire!';
+  else if (ingCount === 5 && recipeFound) document.getElementById('hud-goal').textContent = 'Cook at the station!';
+  else if (recipeFound) document.getElementById('hud-goal').textContent = 'Collect all ingredients!';
+  else document.getElementById('hud-goal').textContent = 'Find recipe & ingredients!';
+}
+
+// ── COOKING SYSTEM ────────────────────────────────
+const cookInfo = [
+  { key: 'brisket', icon: '🥩', label: 'Add the Brisket' },
+  { key: 'salt',    icon: '🧂', label: 'Season with Salt' },
+  { key: 'pepper',  icon: '🌶️', label: 'Add cracked Pepper' },
+  { key: 'garlic',  icon: '🧄', label: 'Rub in Garlic' },
+  { key: 'sauce',   icon: '🍯', label: 'Slather BBQ Sauce' }
+];
+
+function openCookPanel() {
+  const panel = document.getElementById('cook-panel');
+  panel.style.display = 'block';
+  renderCookSteps();
+}
+
+function renderCookSteps() {
+  const container = document.getElementById('cook-steps');
+  container.innerHTML = '';
+  const hint = document.getElementById('cook-hint');
+
+  if (!recipeFound) {
+    hint.textContent = 'Find the recipe scroll to learn the order!';
+  } else {
+    hint.textContent = 'Follow the recipe in order:';
+  }
+
+  cookInfo.forEach((info, idx) => {
+    const div = document.createElement('div');
+    div.className = 'cook-step';
+    const done = cookingProgress[info.key];
+    const isNext = cookStep === idx;
+    const hasIngredient = inventory[info.key];
+
+    if (done) {
+      div.classList.add('done');
+      div.innerHTML = `<span class="step-icon">✅</span> ${info.label}`;
+    } else if (isNext && hasIngredient) {
+      div.classList.add('current');
+      div.innerHTML = `<span class="step-icon">${info.icon}</span> ${info.label} <em style="color:#aaa;font-size:11px;margin-left:auto">(click!)</em>`;
+      div.addEventListener('click', () => applyCookStep(idx, info.key));
+    } else if (isNext && !hasIngredient) {
+      div.innerHTML = `<span class="step-icon">${info.icon}</span> ${info.label} <em style="color:#f66;font-size:11px;margin-left:auto">Need item!</em>`;
+    } else {
+      div.style.opacity = '0.4';
+      div.innerHTML = `<span class="step-icon">${info.icon}</span> ${info.label}`;
+    }
+    container.appendChild(div);
+  });
+
+  const fireBtn = document.getElementById('fire-btn');
+  if (cookStep >= 5) {
+    fireBtn.disabled = false;
+    fireBtn.classList.add('ready');
+    fireBtn.textContent = '🔥 LIGHT THE FIRE!';
+    fireBtn.onclick = doWin;
+  } else {
+    fireBtn.disabled = true;
+    fireBtn.classList.remove('ready');
+    fireBtn.textContent = '🔥 LIGHT THE FIRE!';
+    fireBtn.onclick = null;
+  }
+}
+
+function applyCookStep(idx, key) {
+  if (idx !== cookStep) return;
+  cookingProgress[key] = true;
+  cookStep++;
+  inventory[key] = false; // used up
+  notify(`Added ${key} to the cooking station!`);
+  updateInventoryUI();
+  updateHUD();
+  renderCookSteps();
+}
+
+function doWin() {
+  if (gameWon) return;
+  document.getElementById('cook-panel').style.display = 'none';
+  gameWon = true;
+
+  // Big fire flash
+  fireLight.intensity = 8;
+  setTimeout(() => {
+    document.getElementById('win-screen').style.display = 'flex';
+    if (document.pointerLockElement) document.exitPointerLock();
+  }, 2000);
+}
+
+// ── INTERACTION ───────────────────────────────────
+function getClosestInteractable() {
+  let closest = null;
+  let closestDist = Infinity;
+  for (const item of interactables) {
+    const dx = player.x - item.px;
+    const dz = player.z - item.pz;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist < (item.range || 4) && dist < closestDist) {
+      closestDist = dist;
+      closest = item;
+    }
+  }
+  return closest;
+}
+
+// ── COLLISION ─────────────────────────────────────
+function checkCollision(nx, nz) {
+  const pw = 0.5, pd = 0.5;
+  for (const c of colliders) {
+    const hw = c.w / 2 + pw;
+    const hd = c.d / 2 + pd;
+    if (Math.abs(nx - c.x) < hw && Math.abs(nz - c.z) < hd) {
+      return true;
+    }
+  }
+  // World boundary
+  if (nx < -140 || nx > 140 || nz < -140 || nz > 140) return true;
+  return false;
+}
+
+// ── MINIMAP ───────────────────────────────────────
+const minimapCanvas = document.getElementById('minimap');
+const mmCtx = minimapCanvas.getContext('2d');
+
+const mmBuildings = [
+  { x: 0, z: -45, color: '#cc3322', label: 'Barn' },
+  { x: -40, z: -5, color: '#c8a070', label: 'Kitchen' },
+  { x: 5, z: 38, color: '#8b7355', label: 'Shack' },
+  { x: 40, z: 0, color: '#228b22', label: 'Garden' },
+  { x: 8, z: -10, color: '#888888', label: 'Well' },
+  { x: -8, z: -8, color: '#ff8800', label: 'Cook' },
+];
+
+function drawMinimap() {
+  const W = 120, H = 120, scale = 120 / 200;
+  mmCtx.fillStyle = '#1a2a0a';
+  mmCtx.fillRect(0, 0, W, H);
+
+  // Buildings
+  mmBuildings.forEach(b => {
+    const mx = W / 2 + b.x * scale;
+    const my = H / 2 + b.z * scale;
+    mmCtx.fillStyle = b.color;
+    mmCtx.fillRect(mx - 4, my - 4, 8, 8);
+  });
+
+  // Uncollected items
+  itemMeshes.forEach(im => {
+    const p = im.group.position;
+    const mx = W / 2 + p.x * scale;
+    const my = H / 2 + p.z * scale;
+    mmCtx.fillStyle = '#ffd700';
+    mmCtx.beginPath();
+    mmCtx.arc(mx, my, 2.5, 0, Math.PI * 2);
+    mmCtx.fill();
+  });
+
+  // Player dot
+  const px = W / 2 + player.x * scale;
+  const pz = H / 2 + player.z * scale;
+  mmCtx.fillStyle = '#ffffff';
+  mmCtx.beginPath();
+  mmCtx.arc(px, pz, 3.5, 0, Math.PI * 2);
+  mmCtx.fill();
+
+  // Direction arrow
+  const arrowLen = 6;
+  const ax = px + Math.sin(player.yaw) * arrowLen;
+  const az = pz + Math.cos(player.yaw) * arrowLen;
+  mmCtx.strokeStyle = '#ffffff';
+  mmCtx.lineWidth = 1.5;
+  mmCtx.beginPath();
+  mmCtx.moveTo(px, pz);
+  mmCtx.lineTo(ax, az);
+  mmCtx.stroke();
+
+  // Border
+  mmCtx.strokeStyle = '#ffd700';
+  mmCtx.lineWidth = 2;
+  mmCtx.strokeRect(1, 1, W - 2, H - 2);
+}
+
+// ── GAME LOOP ─────────────────────────────────────
+const clock = new THREE.Clock();
+let walkTime = 0;
+
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 0.05);
+  const t = clock.getElapsedTime();
+
+  if (!gameStarted) {
+    renderer.render(scene, camera);
+    return;
+  }
+
+  // ── Player movement ──
+  const moveForward = keys['KeyW'] || keys['ArrowUp'] ? 1 : 0;
+  const moveBack    = keys['KeyS'] || keys['ArrowDown'] ? 1 : 0;
+  const moveLeft    = keys['KeyA'] || keys['ArrowLeft'] ? 1 : 0;
+  const moveRight   = keys['KeyD'] || keys['ArrowRight'] ? 1 : 0;
+
+  const anyMove = moveForward || moveBack || moveLeft || moveRight;
+
+  let dx = 0, dz = 0;
+  if (moveForward) { dx -= Math.sin(camYaw); dz -= Math.cos(camYaw); }
+  if (moveBack)    { dx += Math.sin(camYaw); dz += Math.cos(camYaw); }
+  if (moveLeft)    { dx -= Math.cos(camYaw); dz += Math.sin(camYaw); }
+  if (moveRight)   { dx += Math.cos(camYaw); dz -= Math.sin(camYaw); }
+
+  const len = Math.sqrt(dx * dx + dz * dz);
+  if (len > 0) { dx /= len; dz /= len; }
+
+  const speed = player.speed * dt;
+  const nx = player.x + dx * speed;
+  const nz = player.z + dz * speed;
+
+  if (!checkCollision(nx, player.z)) player.x = nx;
+  if (!checkCollision(player.x, nz)) player.z = nz;
+
+  // Face direction of movement
+  if (dx !== 0 || dz !== 0) {
+    player.yaw = Math.atan2(-dx, -dz);
+  }
+
+  // ── Goose animation ──
+  goose.position.set(player.x, 0, player.z);
+  goose.rotation.y = player.yaw;
+
+  if (anyMove) {
+    walkTime += dt * 8;
+    const swing = Math.sin(walkTime) * 0.4;
+    const bob = Math.abs(Math.sin(walkTime)) * 0.05;
+    gLegR.rotation.x = swing;
+    gLegL.rotation.x = -swing;
+    gFootR.position.y = Math.max(-0.15, -0.1 + Math.sin(walkTime) * 0.05);
+    gFootL.position.y = Math.max(-0.15, -0.1 + Math.sin(walkTime + Math.PI) * 0.05);
+    gBody.position.y = 0.6 + bob;
+    gHead.rotation.x = Math.sin(walkTime * 0.5) * 0.05;
+  } else {
+    gLegR.rotation.x *= 0.85;
+    gLegL.rotation.x *= 0.85;
+    gHead.rotation.x = Math.sin(t * 1.2) * 0.04;
+  }
+
+  // ── Camera follow ──
+  camYawSmooth += (camYaw - camYawSmooth) * 0.12;
+  const camDist = 5;
+  const camHeight = 3 + camPitch * 4;
+  const idealX = player.x + Math.sin(camYawSmooth) * camDist;
+  const idealZ = player.z + Math.cos(camYawSmooth) * camDist;
+  camPos.lerp(new THREE.Vector3(idealX, player.y + camHeight, idealZ), 0.1);
+  camera.position.copy(camPos);
+  camera.lookAt(player.x, player.y + 1.0, player.z);
+
+  // ── Items: rotate + bob ──
+  itemMeshes.forEach(({ group, baseY }) => {
+    group.rotation.y += dt * 1.5;
+    group.position.y = baseY + Math.sin(t * 2 + group.position.x) * 0.15;
+  });
+
+  // ── Clouds drift ──
+  clouds.forEach(c => {
+    c.position.x += c.userData.speed * dt;
+    if (c.position.x > 100) c.position.x = -100;
+  });
+
+  // ── Fire animation ──
+  fireCones.forEach((cone, i) => {
+    cone.scale.y = 0.8 + Math.sin(t * 8 + i * 1.5) * 0.35;
+    cone.scale.x = 0.9 + Math.sin(t * 6 + i) * 0.2;
+    cone.position.y = 1.1 + cone.scale.y * 0.3;
+  });
+  fireLight.intensity = 2 + Math.sin(t * 7) * 0.5 + Math.sin(t * 13) * 0.3;
+
+  // ── Interaction prompt ──
+  const closest = getClosestInteractable();
+  const promptEl = document.getElementById('prompt');
+  if (closest) {
+    promptEl.textContent = closest.label;
+    promptEl.style.display = 'block';
+  } else {
+    promptEl.style.display = 'none';
+  }
+
+  // ── Minimap ──
+  drawMinimap();
+
+  renderer.render(scene, camera);
+});
+</script>
+</body>
+</html>
